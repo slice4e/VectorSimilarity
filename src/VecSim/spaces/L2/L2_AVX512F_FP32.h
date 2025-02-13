@@ -8,9 +8,7 @@
 
 static inline void L2SqrStep(float *&pVect1, float *&pVect2, __m512 &sum) {
     __m512 v1 = _mm512_loadu_ps(pVect1);
-    pVect1 += 16;
     __m512 v2 = _mm512_loadu_ps(pVect2);
-    pVect2 += 16;
     __m512 diff = _mm512_sub_ps(v1, v2);
 
     sum = _mm512_fmadd_ps(diff, diff, sum);
@@ -20,8 +18,13 @@ template <unsigned char residual> // 0..15
 float FP32_L2SqrSIMD16_AVX512(const void *pVect1v, const void *pVect2v, size_t dimension) {
     float *pVect1 = (float *)pVect1v;
     float *pVect2 = (float *)pVect2v;
+    int toggle = 1; 
 
-    const float *pEnd1 = pVect1 + dimension;
+    float *pEnd1 = pVect1 + dimension;
+    float *pEnd2 = pVect2 + dimension;
+
+    float *pVectBack1 = pEnd1 - 16;
+    float *pVectBack2 = pEnd2 - 16;
 
     __m512 sum = _mm512_setzero_ps();
 
@@ -39,8 +42,19 @@ float FP32_L2SqrSIMD16_AVX512(const void *pVect1v, const void *pVect2v, size_t d
 
     // We dealt with the residual part. We are left with some multiple of 16 floats.
     do {
-        L2SqrStep(pVect1, pVect2, sum);
-    } while (pVect1 < pEnd1);
+    	if(toggle){
+		L2SqrStep(pVect1, pVect2, sum);
+		pVect1 += 16;
+		pVect2 += 16;
+		toggle = 0;
+    	}
+    	else {
+		L2SqrStep(pVectBack1, pVectBack2, sum);
+		pVectBack1 -= 16;
+		pVectBack2 -= 16;
+		toggle = 1;
+    	}
+    } while (pVect1 <= pVectBack1);
 
     return _mm512_reduce_add_ps(sum);
 }
